@@ -2,10 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.rick.companiondevicepairing">
 
-    <!-- 僅需求 BLUETOOTH，而不需要 BLUETOOTH_ADMIN 和 LOCATION -->
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
-
-    <!-- 需要宣告 companion_device_setup，為 software 分類 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-feature android:name="android.software.companion_device_setup" />
 
     <application
