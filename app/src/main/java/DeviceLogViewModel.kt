@@ -6,19 +6,23 @@ import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
+import com.rick.companiondevicepairing.DEVICE_LOGS_CHARACTERISTIC_ID
+import java.text.SimpleDateFormat
 
 import java.util.*
 
 class DeviceLogViewModel(application: Application) : AndroidViewModel(application) {
 
     private  val myServiceUUID = "2A38F000-59C8-492B-9358-0E4E38FB0058"
-    private val myLogsCharacteristicUUID = UUID.fromString("2a38f002-59c8-492b-9358-0e4e38fb0058")
+    private val myLogsCharacteristicUUID = UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID)
 
     var isConnected = MutableLiveData<Boolean>()
     val logs = MutableLiveData<List<String>>(mutableListOf())
     var bluetoothGatt: BluetoothGatt? = null
     private val context = getApplication<Application>().applicationContext
     private val _logsInternal = mutableListOf<String>()
+    var lastLogTime = MutableLiveData<String>("N/A")
+    var lastLogText = MutableLiveData<String>("N/A")
 
 
 
@@ -33,6 +37,7 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     isConnected.postValue(false)
                     addLog("Device Disconnected")
+
                 }
             }
         }
@@ -83,7 +88,13 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun connectGatt(device: BluetoothDevice) {
-        bluetoothGatt = device.connectGatt(context, false, gattCallback)
+        // Close any existing connection
+        bluetoothGatt?.apply {
+            close()
+            bluetoothGatt = null
+        }
+        // Connect to GATT server with auto-reconnect set to true
+        bluetoothGatt = device.connectGatt(context, true, gattCallback) // Set autoConnect to true
     }
 
     fun disconnectGatt() {
@@ -102,9 +113,13 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
         val currentLogs = logs.value?.toMutableList() ?: mutableListOf()
         _logsInternal.add(newLog)
 
+        // Updating last log time and text
+        val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        lastLogTime.postValue(currentTime)
+        lastLogText.postValue(newLog)
+
         currentLogs.add(newLog)
         logs.postValue(currentLogs)
-
     }
 
      val gattServerCallback = object : BluetoothGattServerCallback() {

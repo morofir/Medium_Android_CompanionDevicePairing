@@ -1,7 +1,7 @@
 package com.rick.companiondevicepairing
 
 import DeviceLogViewModel
-import LogAdapter
+import MyLogAdapter
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.*
@@ -22,6 +22,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -30,7 +31,7 @@ import java.util.*
 private const val SELECT_DEVICE_REQUEST_CODE = 0
 private const val REQUEST_CODE_BT_PERMISSIONS = 1001
 private const val myServiceUUID = "2A38F000-59C8-492B-9358-0E4E38FB0058"
-private  val DEVICE_LOGS_CHARACTERISTIC_ID = "2a38f002-59c8-492b-9358-0e4e38fb0058"
+val DEVICE_LOGS_CHARACTERISTIC_ID = "2a38f003-59c8-492b-9358-0e4e38fb0058"
 
 
 
@@ -40,6 +41,10 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
 
     lateinit var txtDeviceStatus: TextView
     lateinit var scanButton: Button
+    val logAdapter = MyLogAdapter()
+
+
+
 
     private val deviceManager: CompanionDeviceManager by lazy(LazyThreadSafetyMode.NONE) {
         getSystemService(CompanionDeviceManager::class.java)
@@ -55,11 +60,8 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
 
 
         val logRecyclerView: RecyclerView = findViewById(R.id.logRecyclerView)
-        val logAdapter = LogAdapter(emptyList())  // Initialize with empty list
         logRecyclerView.layoutManager = LinearLayoutManager(this)
         logRecyclerView.adapter = logAdapter
-
-
 
 
         gattService()
@@ -75,7 +77,9 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             }
         }
         viewModel.logs.observe(this) { logList ->
-            logAdapter.logs = logList  // Or however you want to update your logs in adapter
+            logAdapter.submitListItem(logList)
+            findViewById<TextView>(R.id.counter).text = "count: ${logList.size}"
+
             logAdapter.notifyDataSetChanged()
         }
 
@@ -86,6 +90,13 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
                 if (connected) "Device is now connected" else "Device is disconnected"
             scanButton.text = if (connected) "Disconnect" else "Scan"
         }
+
+        viewModel.lastLogTime.observe(this) { time ->
+            findViewById<TextView>(R.id.txtLastLogTime).text = "Last Log Time: $time"
+        }
+
+
+
     }
 
     private fun gattService() {

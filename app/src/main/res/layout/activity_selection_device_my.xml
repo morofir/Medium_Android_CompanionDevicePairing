@@ -5,6 +5,25 @@
     android:layout_height="match_parent"
     android:keepScreenOn="true">
 
+    <TextView
+        android:id="@+id/txtLastLogTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Last Log Time: N/A"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/counter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/txtLastLogTime" />
+
+
     <Button
         android:id="@+id/btn_scan"
         android:layout_width="wrap_content"
@@ -31,5 +50,7 @@
         app:layout_constraintBottom_toTopOf="@+id/txtDeviceStatus"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@+id/counter" />
+
+
 </androidx.constraintlayout.widget.ConstraintLayout>
