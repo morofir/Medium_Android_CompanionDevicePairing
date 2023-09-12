@@ -1,50 +1,35 @@
-<?xml version="1.0" encoding="utf-8"?>
+<!-- res/layout/activity_selection_device_my.xml -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:keepScreenOn="true"
-    tools:context=".MyDeviceSelectionActivity">
-
+    android:keepScreenOn="true">
 
     <Button
         android:id="@+id/btn_scan"
-        android:layout_width="139dp"
-        android:layout_height="47dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:text="Scan Again"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.498"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
+        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
         android:id="@+id/txtDeviceStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
+        android:layout_marginBottom="16dp"
         android:text="No device connected"
         app:layout_constraintBottom_toTopOf="@+id/btn_scan"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/txtLogStatus" />
+        app:layout_constraintStart_toStartOf="parent" />
 
-    <TextView
-        android:id="@+id/txtLogStatus"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="Logs ... "
-        app:layout_constraintBottom_toTopOf="@+id/btn_scan"
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/logRecyclerView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@+id/txtDeviceStatus"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
-
-
-
-
-
-
 </androidx.constraintlayout.widget.ConstraintLayout>
