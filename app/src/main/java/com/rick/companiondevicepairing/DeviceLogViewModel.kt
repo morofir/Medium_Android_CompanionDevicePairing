@@ -1,3 +1,5 @@
+package com.rick.companiondevicepairing
+
 import android.app.Application
 import android.bluetooth.*
 import android.bluetooth.le.ScanResult
@@ -6,14 +8,12 @@ import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
-import com.rick.companiondevicepairing.DEVICE_LOGS_CHARACTERISTIC_ID
 import java.text.SimpleDateFormat
 
 import java.util.*
 
 class DeviceLogViewModel(application: Application) : AndroidViewModel(application) {
 
-    private  val myServiceUUID = "2A38F000-59C8-492B-9358-0E4E38FB0058"
     private val myLogsCharacteristicUUID = UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID)
 
     var isConnected = MutableLiveData<Boolean>()
@@ -34,6 +34,12 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
                     addLog("Device connected")
                     gatt.discoverServices()
                 }
+                BluetoothProfile.STATE_CONNECTING -> {
+                    addLog("Device connecting ...")
+                }
+                BluetoothProfile.STATE_DISCONNECTING -> {
+                    addLog("Device disconnecting ...")
+                }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     isConnected.postValue(false)
                     addLog("Device Disconnected")
@@ -44,7 +50,7 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
 
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            val service = gatt.getService(UUID.fromString(myServiceUUID))
+            val service = gatt.getService(UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID))
             val characteristic = service.getCharacteristic(myLogsCharacteristicUUID)
 
             if (gatt.setCharacteristicNotification(characteristic, true)) {
@@ -130,7 +136,7 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
             characteristic: BluetoothGattCharacteristic?
         ) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
-            if (characteristic?.uuid == UUID.fromString(myServiceUUID)) {
+            if (characteristic?.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID)) {
                 val logData = characteristic?.value?.toString(Charsets.UTF_8)
                 if (logData != null) {
                    updateLogs(logData)

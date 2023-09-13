@@ -1,6 +1,5 @@
 package com.rick.companiondevicepairing
 
-import DeviceLogViewModel
 import MyLogAdapter
 import android.Manifest
 import android.annotation.SuppressLint
@@ -22,7 +21,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -30,8 +28,7 @@ import java.util.*
 
 private const val SELECT_DEVICE_REQUEST_CODE = 0
 private const val REQUEST_CODE_BT_PERMISSIONS = 1001
-private const val myServiceUUID = "2A38F000-59C8-492B-9358-0E4E38FB0058"
-val DEVICE_LOGS_CHARACTERISTIC_ID = "2a38f003-59c8-492b-9358-0e4e38fb0058"
+val DEVICE_LOGS_CHARACTERISTIC_ID = "2a38f003-59c8-492b-9358-0e4e38fb0056"
 
 
 
@@ -190,7 +187,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
 
     private fun initiateDeviceScan() {
         val scanFilter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid.fromString(myServiceUUID))
+            .setServiceUuid(ParcelUuid.fromString(DEVICE_LOGS_CHARACTERISTIC_ID))
             .build()
 
         val deviceFilter: BluetoothLeDeviceFilter = BluetoothLeDeviceFilter.Builder()
@@ -198,7 +195,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             .build()
 
         val pairingRequest: AssociationRequest = AssociationRequest.Builder()
-            .addDeviceFilter(deviceFilter)
+            .addDeviceFilter(null) // Todo Filter with deviceFilter
             .setSingleDevice(false)
             .build()
 

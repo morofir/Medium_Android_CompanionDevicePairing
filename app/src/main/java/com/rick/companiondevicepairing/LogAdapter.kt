@@ -6,13 +6,16 @@
     import androidx.recyclerview.widget.ListAdapter
     import androidx.recyclerview.widget.RecyclerView
     import com.rick.companiondevicepairing.R
+    import java.text.SimpleDateFormat
+    import java.util.*
 
-    // Replace `String` with your specific data type if it's not a string.
     class MyLogAdapter : ListAdapter<String, MyLogAdapter.ViewHolder>(LogDiffCallback()) {
 
         // ViewHolder definition
         class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
             val logTextView: TextView = itemView.findViewById(R.id.logTextView)
+            val timestampTextView: TextView = itemView.findViewById(R.id.timestampTextView)
+
         }
 
         // DiffUtil for efficient list updates
@@ -34,6 +37,10 @@
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val log = getItem(position)
             holder.logTextView.text = log
+
+            // Set current time
+            val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+            holder.timestampTextView.text = currentTime
         }
 
          fun submitListItem(newList: List<String>) {
