@@ -14,7 +14,6 @@ import java.util.*
 
 class DeviceLogViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val myLogsCharacteristicUUID = UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID)
 
     var isConnected = MutableLiveData<Boolean>()
     val logs = MutableLiveData<List<String>>(mutableListOf())
@@ -23,6 +22,8 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     private val _logsInternal = mutableListOf<String>()
     var lastLogTime = MutableLiveData<String>("N/A")
     var lastLogText = MutableLiveData<String>("N/A")
+    val myLogsCharacteristicUUID = UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG)
+
 
 
 
@@ -50,33 +51,62 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
 
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            val service = gatt.getService(UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID))
-            val characteristic = service.getCharacteristic(myLogsCharacteristicUUID)
+            listOf(
+                Relivion_CUSTOM_SERVICE_ID_MG,
+                RELIVION_CUSTOM_SERVICE_ID_DP
+            ).forEach { serviceId ->
+                val service = gatt.getService(UUID.fromString(serviceId))
+                if (service != null) {
+                    val characteristicId = if (serviceId == Relivion_CUSTOM_SERVICE_ID_MG) {
+                        DEVICE_LOGS_CHARACTERISTIC_ID_MG
+                    } else {
+                        DEVICE_LOGS_CHARACTERISTIC_ID_DP
+                    }
+                    val characteristic = service.getCharacteristic(UUID.fromString(characteristicId))
+                    if (characteristic != null && gatt.setCharacteristicNotification(characteristic, true)) {
+                        addLog("Logs characteristic notification enabled for service $serviceId")
 
-            if (gatt.setCharacteristicNotification(characteristic, true)) {
-                addLog("Logs characteristic notification enabled")
-
-                val descriptor = characteristic.getDescriptor(
-                    UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-                )
-                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                gatt.writeDescriptor(descriptor)
+                        val descriptor = characteristic.getDescriptor(
+                            UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+                        )
+                        descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        gatt.writeDescriptor(descriptor)
+                    } else {
+                        addLog("Failed to get characteristic for service $serviceId")
+                    }
+                } else {
+                    addLog("Service $serviceId not found")
+                }
             }
+
         }
 
-        // Handle incoming notifications
-        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            if (characteristic.uuid == myLogsCharacteristicUUID) {
+
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            if (characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG) ||
+                characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_DP)
+            ) {
                 val logData = String(characteristic.value, Charsets.UTF_8)
-                Log.d("Bluetooth", "Raw data: ${characteristic.value.joinToString(", ") { it.toString() }}")
+                Log.d(
+                    "Bluetooth",
+                    "Raw data: ${characteristic.value.joinToString(", ") { it.toString() }}"
+                )
 
                 updateLogs(logData)
             }
         }
 
-
-        override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            if (characteristic.uuid == myLogsCharacteristicUUID) {
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG) ||
+                characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_DP)
+            ) {
                 val logData = characteristic.value?.let { String(it, Charsets.UTF_8) }
                 if (logData != null) {
                     updateLogs(logData)
@@ -87,6 +117,7 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
 
 
 
+
     fun addLog(message: String) {
         val currentLogs = logs.value?.toMutableList() ?: mutableListOf()
         currentLogs.add(message)
@@ -94,6 +125,10 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun connectGatt(device: BluetoothDevice) {
+        // Clear the logs list
+        _logsInternal.clear()
+        logs.postValue(mutableListOf()) // Clearing LiveData
+
         // Close any existing connection
         bluetoothGatt?.apply {
             close()
@@ -136,7 +171,7 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
             characteristic: BluetoothGattCharacteristic?
         ) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
-            if (characteristic?.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID)) {
+            if (characteristic?.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG)) {
                 val logData = characteristic?.value?.toString(Charsets.UTF_8)
                 if (logData != null) {
                    updateLogs(logData)

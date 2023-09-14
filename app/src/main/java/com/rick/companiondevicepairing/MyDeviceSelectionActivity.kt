@@ -28,7 +28,12 @@ import java.util.*
 
 private const val SELECT_DEVICE_REQUEST_CODE = 0
 private const val REQUEST_CODE_BT_PERMISSIONS = 1001
-val DEVICE_LOGS_CHARACTERISTIC_ID = "2a38f003-59c8-492b-9358-0e4e38fb0056"
+val  Relivion_CUSTOM_SERVICE_ID_MG = "2a38f000-59c8-492b-9358-0e4e38fb0056"
+val  DEVICE_LOGS_CHARACTERISTIC_ID_MG = "2a38f002-59c8-492b-9358-0e4e38fb0056"
+
+val RELIVION_CUSTOM_SERVICE_ID_DP = "2a38f000-59c8-492b-9358-0e4e38fb0058"
+val DEVICE_LOGS_CHARACTERISTIC_ID_DP = "2a38f002-59c8-492b-9358-0e4e38fb0058"
+
 
 
 
@@ -101,17 +106,37 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val gattServer = bluetoothManager.openGattServer(this, viewModel.gattServerCallback)
 
-        val myServiceUUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
-        val deviceLogsCharacteristicUUID = UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID)
+        // MG Service and Characteristic
+        createAndAddServiceToGattServer(
+            gattServer,
+            Relivion_CUSTOM_SERVICE_ID_MG,
+            DEVICE_LOGS_CHARACTERISTIC_ID_MG
+        )
+
+        // DP Service and Characteristic
+        createAndAddServiceToGattServer(
+            gattServer,
+            RELIVION_CUSTOM_SERVICE_ID_DP,
+            DEVICE_LOGS_CHARACTERISTIC_ID_DP
+        )
+    }
+
+    private fun createAndAddServiceToGattServer(
+        gattServer: BluetoothGattServer?,
+        serviceId: String,
+        characteristicId: String
+    ) {
+        val serviceUUID = UUID.fromString(serviceId)
+        val characteristicUUID = UUID.fromString(characteristicId)
 
         // Create and add service
-        val myService = BluetoothGattService(
-            myServiceUUID,
+        val service = BluetoothGattService(
+            serviceUUID,
             BluetoothGattService.SERVICE_TYPE_PRIMARY
         )
 
-        val deviceLogsCharacteristic = BluetoothGattCharacteristic(
-            deviceLogsCharacteristicUUID,
+        val characteristic = BluetoothGattCharacteristic(
+            characteristicUUID,
             BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
@@ -121,12 +146,13 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"),
             BluetoothGattDescriptor.PERMISSION_WRITE or BluetoothGattDescriptor.PERMISSION_READ
         )
-        deviceLogsCharacteristic.addDescriptor(configDescriptor)
+        characteristic.addDescriptor(configDescriptor)
 
-        myService.addCharacteristic(deviceLogsCharacteristic)
+        service.addCharacteristic(characteristic)
 
-        gattServer?.addService(myService)
+        gattServer?.addService(service)
     }
+
 
 
     // Permission during runtime
@@ -186,16 +212,27 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
     }
 
     private fun initiateDeviceScan() {
-        val scanFilter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid.fromString(DEVICE_LOGS_CHARACTERISTIC_ID))
+        // For MG service
+        val scanFilterMg = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid.fromString(Relivion_CUSTOM_SERVICE_ID_MG))
             .build()
 
-        val deviceFilter: BluetoothLeDeviceFilter = BluetoothLeDeviceFilter.Builder()
-            .setScanFilter(scanFilter)
+        val deviceFilterMg: BluetoothLeDeviceFilter = BluetoothLeDeviceFilter.Builder()
+            .setScanFilter(scanFilterMg)
+            .build()
+
+        // For DP service
+        val scanFilterDp = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid.fromString(RELIVION_CUSTOM_SERVICE_ID_DP))
+            .build()
+
+        val deviceFilterDp: BluetoothLeDeviceFilter = BluetoothLeDeviceFilter.Builder()
+            .setScanFilter(scanFilterDp)  // Use the correct scan filter
             .build()
 
         val pairingRequest: AssociationRequest = AssociationRequest.Builder()
-            .addDeviceFilter(null) // Todo Filter with deviceFilter
+            .addDeviceFilter(deviceFilterMg)
+            .addDeviceFilter(deviceFilterDp)
             .setSingleDevice(false)
             .build()
 
