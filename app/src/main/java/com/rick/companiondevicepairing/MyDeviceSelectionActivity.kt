@@ -12,10 +12,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Bundle
-import android.os.ParcelUuid
-import android.os.Parcelable
+import android.net.Uri
+import android.os.*
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +23,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.util.*
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import android.view.View
+import androidx.core.view.size
+
 
 private const val SELECT_DEVICE_REQUEST_CODE = 0
 private const val REQUEST_CODE_BT_PERMISSIONS = 1001
@@ -43,8 +47,9 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
 
     lateinit var txtDeviceStatus: TextView
     lateinit var scanButton: Button
-    val logAdapter = MyLogAdapter()
+    lateinit var shareButton: Button
 
+    val logAdapter = MyLogAdapter()
 
 
 
@@ -53,12 +58,18 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
     }
 
     @SuppressLint("NotifyDataSetChanged")
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(savedInstanceState: Bundle?) { //TODO https://stackoverflow.com/questions/67166985/android-ble-automatic-reconnections-after-pairing
+        //todo Create boded device, use Overview of initiating a BLE connection on Android
+        //The typical flow for initiating a BLE connection in apps can be broken down into roughly two types:
+        //Automa tic connection. The app connects autonomously to a device from returned scan results based on specific heuristics, e.g. we’re scanning for devices advertising certain private service UUIDs and there is only one such device after scanning for a few seconds on low latency mode.
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_selection_device_my)
         viewModel = ViewModelProvider(this).get(DeviceLogViewModel::class.java)
         txtDeviceStatus = findViewById(R.id.txtDeviceStatus)
         scanButton = findViewById(R.id.btn_scan)
+
+        shareButton = findViewById(R.id.btn_share)
+
 
 
         val logRecyclerView: RecyclerView = findViewById(R.id.logRecyclerView)
@@ -69,6 +80,9 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
         gattService()
 
         checkAndRequestPermissions()
+
+        checkBatteryOptimization(this)
+
 
         scanButton.setOnClickListener {
             if (viewModel.isConnected.value == true) {
@@ -82,24 +96,41 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             logAdapter.submitListItem(logList)
             findViewById<TextView>(R.id.counter).text = "count: ${logList.size}"
 
+            if (logList.isNotEmpty()) {
+                shareButton.visibility = View.VISIBLE
+                logRecyclerView.post {
+                    logRecyclerView.scrollToPosition(logList.size - 1)
+                }
+            }
             logAdapter.notifyDataSetChanged()
+        }
+
+        shareButton.setOnClickListener {
+            viewModel.shareLogFile(this)
         }
 
 
 
         viewModel.isConnected.observe(this) { connected ->
+
+            // Check if the connection state is changed
+            if(viewModel.previousConnectionState != connected) {
+                viewModel.previousConnectionState = connected
+                viewModel.saveLogsToFile(viewModel.logs.value ?: listOf())
+            }
+
+
             txtDeviceStatus.text =
                 if (connected) "Device is now connected" else "Device is disconnected"
             scanButton.text = if (connected) "Disconnect" else "Scan"
+
         }
 
         viewModel.lastLogTime.observe(this) { time ->
             findViewById<TextView>(R.id.txtLastLogTime).text = "Last Log Time: $time"
         }
-
-
-
     }
+
 
     private fun gattService() {
         // Initialize your BluetoothGattServer and set the callback
@@ -191,6 +222,19 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
                 permissionsNeeded.toTypedArray(),
                 REQUEST_CODE_BT_PERMISSIONS
             )
+        }
+    }
+
+    fun checkBatteryOptimization(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val packageName = context.packageName
+            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = Intent()
+                intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                intent.data = Uri.parse("package:$packageName")
+                context.startActivity(intent)
+            }
         }
     }
 

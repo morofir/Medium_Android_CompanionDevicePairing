@@ -35,15 +35,33 @@
         }
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            val log = getItem(position)
-            holder.logTextView.text = log
+            val fullLog = getItem(position)
 
-            // Set current time
-            val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-            holder.timestampTextView.text = currentTime
+            // Split the log to retrieve timestamp and message
+            val splitIndex = fullLog.indexOf(": ")
+            if (splitIndex == -1) {
+                // Log entry does not have the expected format, handle gracefully
+                holder.logTextView.text = fullLog
+                holder.timestampTextView.text = "N/A"
+                return
+            }
+
+            val timestamp = fullLog.substring(0, splitIndex)
+            val logMessage = fullLog.substring(splitIndex + 2)
+
+            holder.logTextView.text = logMessage
+
+            // Convert the timestamp to "HH:mm" format for display
+            val originalFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val displayFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            val logDate = originalFormat.parse(timestamp)
+            val displayTime = if (logDate != null) displayFormat.format(logDate) else "N/A"
+
+            holder.timestampTextView.text = displayTime
         }
 
-         fun submitListItem(newList: List<String>) {
+
+        fun submitListItem(newList: List<String>) {
             super.submitList(newList.toMutableList())
         }
     }

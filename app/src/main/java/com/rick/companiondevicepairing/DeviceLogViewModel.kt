@@ -1,14 +1,26 @@
 package com.rick.companiondevicepairing
 
+import android.Manifest
 import android.app.Application
 import android.bluetooth.*
 import android.bluetooth.le.ScanResult
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Parcelable
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
 import java.text.SimpleDateFormat
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+
 
 import java.util.*
 
@@ -23,6 +35,8 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     var lastLogTime = MutableLiveData<String>("N/A")
     var lastLogText = MutableLiveData<String>("N/A")
     val myLogsCharacteristicUUID = UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG)
+    var previousConnectionState: Boolean? = null
+
 
 
 
@@ -31,8 +45,10 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
+
                     isConnected.postValue(true)
                     addLog("Device connected")
+                    previousConnectionState = isConnected.value
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_CONNECTING -> {
@@ -42,9 +58,10 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
                     addLog("Device disconnecting ...")
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
+
                     isConnected.postValue(false)
                     addLog("Device Disconnected")
-
+                    previousConnectionState = isConnected.value
                 }
             }
         }
@@ -116,16 +133,15 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
 
-
-
     fun addLog(message: String) {
         val currentLogs = logs.value?.toMutableList() ?: mutableListOf()
         currentLogs.add(message)
         logs.postValue(currentLogs)
     }
 
-    fun connectGatt(device: BluetoothDevice) {
-        // Clear the logs list
+    private fun connectGatt(device: BluetoothDevice) {
+        // save logs to file and Clear the logs list
+        saveLogsToFile(_logsInternal)
         _logsInternal.clear()
         logs.postValue(mutableListOf()) // Clearing LiveData
 
@@ -151,17 +167,21 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     fun updateLogs(newLog: String) {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        val logWithTimestamp = "$timestamp: $newLog"
+
         val currentLogs = logs.value?.toMutableList() ?: mutableListOf()
-        _logsInternal.add(newLog)
+        _logsInternal.add(logWithTimestamp)
 
         // Updating last log time and text
         val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         lastLogTime.postValue(currentTime)
-        lastLogText.postValue(newLog)
+        lastLogText.postValue(logWithTimestamp)
 
-        currentLogs.add(newLog)
+        currentLogs.add(logWithTimestamp)
         logs.postValue(currentLogs)
     }
+
 
      val gattServerCallback = object : BluetoothGattServerCallback() {
         override fun onCharacteristicReadRequest(
@@ -179,5 +199,57 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
+
+    fun saveLogsToFile(logs: List<String>) {
+        val logsString = logs.joinToString("\n")
+        try {
+            val logsFile = File(context.getExternalFilesDir(null), "device_logs.txt")
+            val fos = FileOutputStream(logsFile)
+            fos.write(logsString.toByteArray())
+            fos.close()
+
+            Toast.makeText(context, "Logs saved to ${logsFile.absolutePath}", Toast.LENGTH_LONG).show()
+        } catch (e: IOException) {
+            Toast.makeText(context, "Failed to save logs", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+
+    fun shareLogFile(activity: AppCompatActivity) {
+        val logsFile = File(activity.getExternalFilesDir(null), "device_logs.txt")
+
+        if (!logsFile.exists()) {
+            Toast.makeText(activity, "Log file doesn't exist", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.READ_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED) {
+            // If you don't have permission, request it
+            ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), PERMISSION_REQUEST_CODE)
+            return
+        }
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Device Logs")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val uri: Uri = FileProvider.getUriForFile(
+                activity,
+                "com.rick.companiondevicepairing.fileprovider",
+                logsFile
+            )
+            putExtra(Intent.EXTRA_STREAM, uri)
+        }
+        activity.startActivity(Intent.createChooser(intent, "Share logs via"))
+    }
+
+    companion object {
+        const val PERMISSION_REQUEST_CODE = 101
+    }
+
+
+
 
 }
