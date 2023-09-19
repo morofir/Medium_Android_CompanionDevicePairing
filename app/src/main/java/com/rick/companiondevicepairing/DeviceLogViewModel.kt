@@ -14,17 +14,20 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.*
+import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import org.greenrobot.eventbus.EventBus
+import org.greenrobot.eventbus.Subscribe
+import org.greenrobot.eventbus.ThreadMode
 
 
 import java.util.*
 
-class DeviceLogViewModel(application: Application) : AndroidViewModel(application) {
+class DeviceLogViewModel(application: Application) : AndroidViewModel(application), LifecycleObserver {
 
 
     var isConnected = MutableLiveData<Boolean>()
@@ -34,116 +37,251 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     private val _logsInternal = mutableListOf<String>()
     var lastLogTime = MutableLiveData<String>("N/A")
     var lastLogText = MutableLiveData<String>("N/A")
-    val myLogsCharacteristicUUID = UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG)
     var previousConnectionState: Boolean? = null
+//    private val logFetchingService = LogFetchingService()
+    private var lastLoggedState: String? = null
+    private var isLoggingActive = false
+    private var lastConnectedDevice: BluetoothDevice? = null
+    val lastLogTimes: MutableLiveData<List<String>> = MutableLiveData(emptyList())
+    private var reconnectJob: Job? = null
+
+    init {
+        val mediatorLiveData = MediatorLiveData<Boolean>()
+        mediatorLiveData.addSource(isConnected) { isConnected ->
+            if (previousConnectionState == true && isConnected == false) {
+                // The device has been disconnected; initiate reconnection.
+                initiateReconnection()
+            }
+            previousConnectionState = isConnected
+        }
+    }
+
+
+
+//    init {
+//        EventBus.getDefault().register(this)
+//    }
+//
+//    @Subscribe(threadMode = ThreadMode.MAIN)
+//    fun onLogsEvent(event: LogFetchingService.LogsEvent) {
+//        _logsInternal.addAll(event.logs.map { log -> log })
+//        logs.postValue(_logsInternal.toList())
+//    }
+//
+override fun onCleared() {
+    reconnectJob?.cancel()
+}
 
 
 
 
+    @OnLifecycleEvent(Lifecycle.Event.ON_START)
+    fun onStart(){
+        addLog("App State: ON_START")
+        startPeriodicLogging()
+    }
 
-    private val gattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
+    @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
+    fun onEnterBackground() {
+        addLog("App State: ON_STOP")
+        // We'll keep logging in the background for demonstration
+    }
 
-                    isConnected.postValue(true)
-                    addLog("Device connected")
-                    previousConnectionState = isConnected.value
-                    gatt.discoverServices()
+    @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+    fun onDestroyed() {
+        addLog("App State: TERMINATED")
+    }
+
+    private fun initiateReconnection() {
+        // Cancel any ongoing reconnection job to avoid multiple simultaneous reconnections
+        reconnectJob?.cancel()
+
+        reconnectJob = CoroutineScope(Dispatchers.IO).launch {
+            var retryCount = 0
+            while (!isConnected.value!! && retryCount < MAX_RECONNECT_ATTEMPTS) {
+                delay(RECONNECT_INTERVAL_MS)
+                lastConnectedDevice?.let { device ->
+                    connectGatt(device)
                 }
-                BluetoothProfile.STATE_CONNECTING -> {
-                    addLog("Device connecting ...")
-                }
-                BluetoothProfile.STATE_DISCONNECTING -> {
-                    addLog("Device disconnecting ...")
-                }
-                BluetoothProfile.STATE_DISCONNECTED -> {
-
-                    isConnected.postValue(false)
-                    addLog("Device Disconnected")
-                    previousConnectionState = isConnected.value
-                }
+                retryCount++
             }
         }
+    }
 
 
-        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            listOf(
-                Relivion_CUSTOM_SERVICE_ID_MG,
-                RELIVION_CUSTOM_SERVICE_ID_DP
-            ).forEach { serviceId ->
-                val service = gatt.getService(UUID.fromString(serviceId))
-                if (service != null) {
-                    val characteristicId = if (serviceId == Relivion_CUSTOM_SERVICE_ID_MG) {
-                        DEVICE_LOGS_CHARACTERISTIC_ID_MG
-                    } else {
-                        DEVICE_LOGS_CHARACTERISTIC_ID_DP
-                    }
-                    val characteristic = service.getCharacteristic(UUID.fromString(characteristicId))
-                    if (characteristic != null && gatt.setCharacteristicNotification(characteristic, true)) {
-                        addLog("Logs characteristic notification enabled for service $serviceId")
+    private fun startPeriodicLogging() {
+        if (isLoggingActive) return
+        isLoggingActive = true
 
-                        val descriptor = characteristic.getDescriptor(
-                            UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-                        )
-                        descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                        gatt.writeDescriptor(descriptor)
-                    } else {
-                        addLog("Failed to get characteristic for service $serviceId")
-                    }
-                } else {
-                    addLog("Service $serviceId not found")
-                }
-            }
+        CoroutineScope(Dispatchers.IO).launch {
+            while (isLoggingActive) {
+                delay(1000) // Wait for 1 second
 
-        }
+                val deviceState = if (isConnected.value == true) "Connected" else "Disconnected"
 
-
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic
-        ) {
-            if (characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG) ||
-                characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_DP)
-            ) {
-                val logData = String(characteristic.value, Charsets.UTF_8)
-                Log.d(
-                    "Bluetooth",
-                    "Raw data: ${characteristic.value.joinToString(", ") { it.toString() }}"
-                )
-
-                updateLogs(logData)
-            }
-        }
-
-        override fun onCharacteristicRead(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            status: Int
-        ) {
-            if (characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG) ||
-                characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_DP)
-            ) {
-                val logData = characteristic.value?.let { String(it, Charsets.UTF_8) }
-                if (logData != null) {
-                    updateLogs(logData)
+                // Check if the state has changed since the last log entry
+                if (deviceState != lastLoggedState) {
+                    lastLoggedState = deviceState
+                    val timestamp = getCurrentTimestamp()
+                    addLog("$timestamp: Device State: $deviceState")
                 }
             }
         }
     }
 
+    fun logConnectionTime(time: String) {
+        val currentList = lastLogTimes.value?.toMutableList() ?: mutableListOf()
+        currentList.add(time)
+        lastLogTimes.value = currentList
+    }
+
+
+    private fun getCurrentTimestamp(): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        return sdf.format(Date())
+    }
+
+     private val gattCallback = object : BluetoothGattCallback() {
+         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+             when (newState) {
+                 BluetoothProfile.STATE_CONNECTED -> {
+                     addLog("Device connected")
+                     isConnected.postValue(true)
+                     previousConnectionState = isConnected.value
+                     gatt.discoverServices()
+                 }
+                 BluetoothProfile.STATE_CONNECTING -> {
+                     addLog("Device connecting ...")
+                 }
+                 BluetoothProfile.STATE_DISCONNECTING -> {
+                     addLog("Device disconnecting ...")
+                 }
+                 BluetoothProfile.STATE_DISCONNECTED -> {
+                     addLog("Device Disconnected")
+                     isConnected.postValue(false)
+                     previousConnectionState = isConnected.value
+                 }
+             }
+         }
+
+         override fun onCharacteristicChanged(
+             gatt: BluetoothGatt,
+             characteristic: BluetoothGattCharacteristic
+         ) {
+             if (characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG) ||
+                 characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_DP)
+             ) {
+                 val logData = String(characteristic.value, Charsets.UTF_8)
+
+                 // Log the detailed raw data to Android's system logs for debugging
+                 Log.d(
+                     "Bluetooth",
+                     "Raw data: ${characteristic.value.joinToString(", ") { it.toString() }}"
+                 )
+
+                 // Combine the placeholder for raw binary data and the actual log data into a single entry
+                 val combinedLog = "binary data"
+                 updateLogs(combinedLog)
+
+             }
+         }
+
+         override fun onCharacteristicRead(
+             gatt: BluetoothGatt,
+             characteristic: BluetoothGattCharacteristic,
+             status: Int
+         ) {
+             if (characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG) ||
+                 characteristic.uuid == UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_DP)
+             ) {
+                 val logData = characteristic.value?.let { String(it, Charsets.UTF_8) }
+                 if (logData != null) {
+                     updateLogs(logData)
+                 }
+             }
+         }
+
+
+
+         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+             listOf(
+                 Relivion_CUSTOM_SERVICE_ID_MG,
+                 RELIVION_CUSTOM_SERVICE_ID_DP
+             ).forEach { serviceId ->
+                 val service = gatt.getService(UUID.fromString(serviceId))
+                 if (service != null) {
+                     val characteristicId = if (serviceId == Relivion_CUSTOM_SERVICE_ID_MG) {
+                         DEVICE_LOGS_CHARACTERISTIC_ID_MG
+                     } else {
+                         DEVICE_LOGS_CHARACTERISTIC_ID_DP
+                     }
+                     val characteristic = service.getCharacteristic(UUID.fromString(characteristicId))
+                     if (characteristic != null && gatt.setCharacteristicNotification(characteristic, true)) {
+                         addLog("Logs characteristic notification enabled for service $serviceId")
+
+                         val descriptor = characteristic.getDescriptor(
+                             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+                         )
+                         descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                         gatt.writeDescriptor(descriptor)
+                     } else {
+                         addLog("Failed to get characteristic for service $serviceId")
+                     }
+                 } else {
+                     addLog("Service $serviceId not found")
+                 }
+             }
+
+         }
+
+
+
+
+     }
 
     fun addLog(message: String) {
-        val currentLogs = logs.value?.toMutableList() ?: mutableListOf()
-        currentLogs.add(message)
-        logs.postValue(currentLogs)
+        _logsInternal.add(message)
+        logs.postValue(_logsInternal.toList())  // Using postValue here
     }
 
+
+    fun handleBondedDevice(bondedDevice: BluetoothDevice) {
+        // If you're not connected or you're connected to a different device, initiate a connection.
+        if (isConnected.value != true || lastConnectedDevice?.address != bondedDevice.address) {
+            lastConnectedDevice = bondedDevice
+            connectGatt(bondedDevice)
+        } else {
+            // If already connected to the same device, trigger log reading
+            readLogsFromDevice()
+        }
+    }
+
+    fun readLogsFromDevice() {
+        // Identify the correct characteristic that you wish to read from.
+        // This example uses DEVICE_LOGS_CHARACTERISTIC_ID_MG for demonstration.
+        val serviceUUID = UUID.fromString(Relivion_CUSTOM_SERVICE_ID_MG)
+        val characteristicUUID = UUID.fromString(DEVICE_LOGS_CHARACTERISTIC_ID_MG)
+
+        val service = bluetoothGatt?.getService(serviceUUID)
+        val characteristic = service?.getCharacteristic(characteristicUUID)
+
+        if (characteristic != null) {
+            bluetoothGatt?.readCharacteristic(characteristic)
+        }
+    }
+
+
+
     private fun connectGatt(device: BluetoothDevice) {
+        // If we're already connected or attempting a connection, disconnect first
+        if (isConnected.value == true || bluetoothGatt != null) {
+            bluetoothGatt?.disconnect()
+        }
         // save logs to file and Clear the logs list
+        val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         saveLogsToFile(_logsInternal)
-        _logsInternal.clear()
-        logs.postValue(mutableListOf()) // Clearing LiveData
+        logs.postValue(listOf("-------New Connection-------"))
+        logConnectionTime(timestamp)
 
         // Close any existing connection
         bluetoothGatt?.apply {
@@ -155,31 +293,36 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun disconnectGatt() {
+        reconnectJob?.cancel()
+
         bluetoothGatt?.disconnect()
     }
 
     fun handleActivityResult(deviceObject: Parcelable) {
         if (deviceObject is ScanResult) {
             val device = deviceObject.device
+            lastConnectedDevice = device
+
             connectGatt(device)
         } else {
             Toast.makeText(context, "Failed to connect", Toast.LENGTH_SHORT).show()
         }
     }
+
     fun updateLogs(newLog: String) {
-        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-        val logWithTimestamp = "$timestamp: $newLog"
+//        val fetchedLogs = logFetchingService.fetchLogs(newLog)
+        val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        val logWithTimestamp = "$timestamp: Device State: $newLog"
 
-        val currentLogs = logs.value?.toMutableList() ?: mutableListOf()
-        _logsInternal.add(logWithTimestamp)
+        // Adding the log to both _logsInternal and LiveData
+        addLog(logWithTimestamp)
 
-        // Updating last log time and text
-        val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        lastLogTime.postValue(currentTime)
-        lastLogText.postValue(logWithTimestamp)
+        lastLogText.postValue(logWithTimestamp)  // Using postValue
 
-        currentLogs.add(logWithTimestamp)
-        logs.postValue(currentLogs)
+        // If there are new logs, save them to the file
+//        if (fetchedLogs.isNotEmpty()) {
+//            saveLogsToFile(_logsInternal)
+//        }
     }
 
 
@@ -247,9 +390,9 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
 
     companion object {
         const val PERMISSION_REQUEST_CODE = 101
+        const val MAX_RECONNECT_ATTEMPTS = 5 // you can adjust this
+        const val RECONNECT_INTERVAL_MS = 5000L // 5 seconds, you can adjust this as needed
     }
 
-
-
-
 }
+

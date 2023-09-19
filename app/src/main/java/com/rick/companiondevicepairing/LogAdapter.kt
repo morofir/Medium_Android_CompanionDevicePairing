@@ -1,3 +1,4 @@
+    import android.util.Log
     import android.view.LayoutInflater
     import android.view.View
     import android.view.ViewGroup
@@ -6,6 +7,7 @@
     import androidx.recyclerview.widget.ListAdapter
     import androidx.recyclerview.widget.RecyclerView
     import com.rick.companiondevicepairing.R
+    import java.text.ParseException
     import java.text.SimpleDateFormat
     import java.util.*
 
@@ -37,8 +39,8 @@
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val fullLog = getItem(position)
 
-            // Split the log to retrieve timestamp and message
-            val splitIndex = fullLog.indexOf(": ")
+            val splitString = ": Device State: "
+            val splitIndex = fullLog.indexOf(splitString)
             if (splitIndex == -1) {
                 // Log entry does not have the expected format, handle gracefully
                 holder.logTextView.text = fullLog
@@ -47,17 +49,19 @@
             }
 
             val timestamp = fullLog.substring(0, splitIndex)
-            val logMessage = fullLog.substring(splitIndex + 2)
+            val logMessage = fullLog.substring(splitIndex + splitString.length)
 
             holder.logTextView.text = logMessage
 
-            // Convert the timestamp to "HH:mm" format for display
-            val originalFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            val displayFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-            val logDate = originalFormat.parse(timestamp)
-            val displayTime = if (logDate != null) displayFormat.format(logDate) else "N/A"
+            val format = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
-            holder.timestampTextView.text = displayTime
+            try {
+                val logDate = format.parse(timestamp)
+                holder.timestampTextView.text = format.format(logDate)
+            } catch (e: ParseException) {
+                Log.e("MyLogAdapter", "Failed to parse date: $timestamp", e)
+                holder.timestampTextView.text = timestamp
+            }
         }
 
 

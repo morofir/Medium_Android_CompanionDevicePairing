@@ -49,6 +49,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
     lateinit var scanButton: Button
     lateinit var shareButton: Button
 
+
     val logAdapter = MyLogAdapter()
 
 
@@ -58,31 +59,29 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
     }
 
     @SuppressLint("NotifyDataSetChanged")
-    override fun onCreate(savedInstanceState: Bundle?) { //TODO https://stackoverflow.com/questions/67166985/android-ble-automatic-reconnections-after-pairing
-        //todo Create boded device, use Overview of initiating a BLE connection on Android
-        //The typical flow for initiating a BLE connection in apps can be broken down into roughly two types:
-        //Automa tic connection. The app connects autonomously to a device from returned scan results based on specific heuristics, e.g. we’re scanning for devices advertising certain private service UUIDs and there is only one such device after scanning for a few seconds on low latency mode.
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_selection_device_my)
+
         viewModel = ViewModelProvider(this).get(DeviceLogViewModel::class.java)
+        lifecycle.addObserver(viewModel)
+
         txtDeviceStatus = findViewById(R.id.txtDeviceStatus)
         scanButton = findViewById(R.id.btn_scan)
-
         shareButton = findViewById(R.id.btn_share)
-
-
 
         val logRecyclerView: RecyclerView = findViewById(R.id.logRecyclerView)
         logRecyclerView.layoutManager = LinearLayoutManager(this)
         logRecyclerView.adapter = logAdapter
 
-
         gattService()
-
         checkAndRequestPermissions()
-
         checkBatteryOptimization(this)
 
+        // Automatically start device scan when app is created.
+        if (viewModel.isConnected.value != true) {
+            initiateDeviceScan()
+        }
 
         scanButton.setOnClickListener {
             if (viewModel.isConnected.value == true) {
@@ -92,6 +91,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
                 initiateDeviceScan()
             }
         }
+
         viewModel.logs.observe(this) { logList ->
             logAdapter.submitListItem(logList)
             findViewById<TextView>(R.id.counter).text = "count: ${logList.size}"
@@ -109,27 +109,25 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             viewModel.shareLogFile(this)
         }
 
-
-
         viewModel.isConnected.observe(this) { connected ->
-
             // Check if the connection state is changed
             if(viewModel.previousConnectionState != connected) {
                 viewModel.previousConnectionState = connected
                 viewModel.saveLogsToFile(viewModel.logs.value ?: listOf())
             }
 
-
             txtDeviceStatus.text =
                 if (connected) "Device is now connected" else "Device is disconnected"
             scanButton.text = if (connected) "Disconnect" else "Scan"
-
         }
 
-        viewModel.lastLogTime.observe(this) { time ->
-            findViewById<TextView>(R.id.txtLastLogTime).text = "Last Log Time: $time"
+        viewModel.lastLogTimes.observe(this) { times ->
+            val timesString = times.joinToString(", ")
+            findViewById<TextView>(R.id.txtLastLogTime).text = "Last connection Times:\n$timesString"
         }
+
     }
+
 
 
     private fun gattService() {
@@ -256,6 +254,22 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
     }
 
     private fun initiateDeviceScan() {
+
+        val bondedDevices = BluetoothAdapter.getDefaultAdapter().bondedDevices
+
+        val bondedDeviceMg = bondedDevices.find { device ->
+            device.uuids?.any { it.uuid.toString() == Relivion_CUSTOM_SERVICE_ID_MG } ?: false
+        }
+
+        val bondedDeviceDp = bondedDevices.find { device ->
+            device.uuids?.any { it.uuid.toString() == RELIVION_CUSTOM_SERVICE_ID_DP } ?: false
+        }
+
+        if (bondedDeviceMg != null) {
+            viewModel.handleBondedDevice(bondedDeviceMg)
+        } else if (bondedDeviceDp != null) {
+            viewModel.handleBondedDevice(bondedDeviceDp)
+        } else {
         // For MG service
         val scanFilterMg = ScanFilter.Builder()
             .setServiceUuid(ParcelUuid.fromString(Relivion_CUSTOM_SERVICE_ID_MG))
@@ -294,6 +308,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
                 }
             }, null
         )
+            }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -304,6 +319,4 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             deviceObject?.let { viewModel.handleActivityResult(it) }
         }
     }
-
-
 }
