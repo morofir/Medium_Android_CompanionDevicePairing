@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.Application
 import android.bluetooth.*
 import android.bluetooth.le.ScanResult
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -44,6 +46,12 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     private var lastConnectedDevice: BluetoothDevice? = null
     val lastLogTimes: MutableLiveData<List<String>> = MutableLiveData(emptyList())
     private var reconnectJob: Job? = null
+
+    private val gattServer: BluetoothGattServer? = null
+    private val bluetoothManager: BluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
+
+
 
     init {
         val mediatorLiveData = MediatorLiveData<Boolean>()
@@ -202,7 +210,6 @@ override fun onCleared() {
          }
 
 
-
          override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
              listOf(
                  Relivion_CUSTOM_SERVICE_ID_MG,
@@ -246,13 +253,19 @@ override fun onCleared() {
 
 
     fun handleBondedDevice(bondedDevice: BluetoothDevice) {
-        // If you're not connected or you're connected to a different device, initiate a connection.
-        if (isConnected.value != true || lastConnectedDevice?.address != bondedDevice.address) {
-            lastConnectedDevice = bondedDevice
-            connectGatt(bondedDevice)
+        if (bondedDevice.bondState != BluetoothDevice.BOND_BONDED) {
+            bondedDevice.createBond()
+            // Once the bond is created, the device's bond state will change.
+            // You can then initiate the connection or whatever logic you want to handle post-bonding.
         } else {
-            // If already connected to the same device, trigger log reading
-            readLogsFromDevice()
+            // If you're not connected or you're connected to a different device, initiate a connection.
+            if (isConnected.value != true || lastConnectedDevice?.address != bondedDevice.address) {
+                lastConnectedDevice = bondedDevice
+                connectGatt(bondedDevice)
+            } else {
+                // If already connected to the same device, trigger log reading
+                readLogsFromDevice()
+            }
         }
     }
 
@@ -343,6 +356,31 @@ override fun onCleared() {
         }
     }
 
+    val bondStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val action: String = intent.action!!
+            if (BluetoothDevice.ACTION_BOND_STATE_CHANGED == action) {
+                val device: BluetoothDevice = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)!!
+                val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
+                Toast.makeText(context, "bondState ${bondState}", Toast.LENGTH_LONG).show()
+
+                when (bondState) {
+                    BluetoothDevice.BOND_BONDING -> {
+
+                        // Show a message or UI element indicating bonding in progress.
+                    }
+                    BluetoothDevice.BOND_BONDED -> {
+                        // The device is now bonded. You can initiate a connection or handle post-bonding logic here.
+                    }
+                    BluetoothDevice.BOND_NONE -> {
+                        // Bonding failed or the device is now unbonded. Handle accordingly.
+                    }
+                }
+            }
+        }
+    }
+
+    // LOG FILES
     fun saveLogsToFile(logs: List<String>) {
         val logsString = logs.joinToString("\n")
         try {

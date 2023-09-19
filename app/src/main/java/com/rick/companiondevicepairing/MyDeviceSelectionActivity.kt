@@ -8,9 +8,7 @@ import android.bluetooth.le.ScanFilter
 import android.companion.AssociationRequest
 import android.companion.BluetoothLeDeviceFilter
 import android.companion.CompanionDeviceManager
-import android.content.Context
-import android.content.Intent
-import android.content.IntentSender
+import android.content.*
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.*
@@ -26,17 +24,17 @@ import java.util.*
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import android.view.View
 import androidx.core.view.size
 
 
 private const val SELECT_DEVICE_REQUEST_CODE = 0
 private const val REQUEST_CODE_BT_PERMISSIONS = 1001
-val  Relivion_CUSTOM_SERVICE_ID_MG = "2a38f000-59c8-492b-9358-0e4e38fb0056"
-val  DEVICE_LOGS_CHARACTERISTIC_ID_MG = "2a38f002-59c8-492b-9358-0e4e38fb0056"
-
-val RELIVION_CUSTOM_SERVICE_ID_DP = "2a38f000-59c8-492b-9358-0e4e38fb0058"
-val DEVICE_LOGS_CHARACTERISTIC_ID_DP = "2a38f002-59c8-492b-9358-0e4e38fb0058"
+const val  Relivion_CUSTOM_SERVICE_ID_MG = "2a38f000-59c8-492b-9358-0e4e38fb0056"
+const val  DEVICE_LOGS_CHARACTERISTIC_ID_MG = "2a38f002-59c8-492b-9358-0e4e38fb0056"
+const val RELIVION_CUSTOM_SERVICE_ID_DP = "2a38f000-59c8-492b-9358-0e4e38fb0058"
+const val DEVICE_LOGS_CHARACTERISTIC_ID_DP = "2a38f002-59c8-492b-9358-0e4e38fb0058"
 
 
 
@@ -44,11 +42,9 @@ val DEVICE_LOGS_CHARACTERISTIC_ID_DP = "2a38f002-59c8-492b-9358-0e4e38fb0058"
 class MyDeviceSelectionActivity : AppCompatActivity() {
 
     private lateinit var viewModel: DeviceLogViewModel
-
     lateinit var txtDeviceStatus: TextView
     lateinit var scanButton: Button
     lateinit var shareButton: Button
-
 
     val logAdapter = MyLogAdapter()
 
@@ -77,6 +73,16 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
         gattService()
         checkAndRequestPermissions()
         checkBatteryOptimization(this)
+
+        val bondStateFilter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        registerReceiver(viewModel.bondStateReceiver, bondStateFilter)
+
+        val bondedDevices = BluetoothAdapter.getDefaultAdapter().bondedDevices
+        bondedDevices.forEach { device ->
+            Log.d("BondedDevice", "Device name: ${device.name}, Address: ${device.address}")
+        }
+
+
 
         // Automatically start device scan when app is created.
         if (viewModel.isConnected.value != true) {
@@ -255,7 +261,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
 
     private fun initiateDeviceScan() {
 
-        val bondedDevices = BluetoothAdapter.getDefaultAdapter().bondedDevices
+         val bondedDevices = BluetoothAdapter.getDefaultAdapter().bondedDevices
 
         val bondedDeviceMg = bondedDevices.find { device ->
             device.uuids?.any { it.uuid.toString() == Relivion_CUSTOM_SERVICE_ID_MG } ?: false
@@ -319,4 +325,11 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             deviceObject?.let { viewModel.handleActivityResult(it) }
         }
     }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(viewModel.bondStateReceiver)
+    }
+
 }
