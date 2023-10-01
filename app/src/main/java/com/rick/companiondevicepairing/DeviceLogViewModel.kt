@@ -22,9 +22,6 @@ import java.text.SimpleDateFormat
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import org.greenrobot.eventbus.EventBus
-import org.greenrobot.eventbus.Subscribe
-import org.greenrobot.eventbus.ThreadMode
 
 
 import java.util.*
@@ -37,20 +34,13 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     var bluetoothGatt: BluetoothGatt? = null
     private val context = getApplication<Application>().applicationContext
     private val _logsInternal = mutableListOf<String>()
-    var lastLogTime = MutableLiveData<String>("N/A")
     var lastLogText = MutableLiveData<String>("N/A")
     var previousConnectionState: Boolean? = null
-//    private val logFetchingService = LogFetchingService()
     private var lastLoggedState: String? = null
     private var isLoggingActive = false
     private var lastConnectedDevice: BluetoothDevice? = null
     val lastLogTimes: MutableLiveData<List<String>> = MutableLiveData(emptyList())
     private var reconnectJob: Job? = null
-
-    private val gattServer: BluetoothGattServer? = null
-    private val bluetoothManager: BluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
-
 
 
     init {
@@ -63,25 +53,9 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
             previousConnectionState = isConnected
         }
     }
-
-
-
-//    init {
-//        EventBus.getDefault().register(this)
-//    }
-//
-//    @Subscribe(threadMode = ThreadMode.MAIN)
-//    fun onLogsEvent(event: LogFetchingService.LogsEvent) {
-//        _logsInternal.addAll(event.logs.map { log -> log })
-//        logs.postValue(_logsInternal.toList())
-//    }
-//
-override fun onCleared() {
-    reconnectJob?.cancel()
-}
-
-
-
+    override fun onCleared() {
+        reconnectJob?.cancel()
+    }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_START)
     fun onStart(){
@@ -92,6 +66,7 @@ override fun onCleared() {
     @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
     fun onEnterBackground() {
         addLog("App State: ON_STOP")
+
         // We'll keep logging in the background for demonstration
     }
 
@@ -149,6 +124,16 @@ override fun onCleared() {
         return sdf.format(Date())
     }
 
+    fun startService(context: Context) {
+        val serviceIntent = Intent(context, ForegroundService::class.java)
+        ContextCompat.startForegroundService(context, serviceIntent)
+    }
+
+    fun stopService(context: Context) {
+        val serviceIntent = Intent(context, ForegroundService::class.java)
+        context.stopService(serviceIntent)
+    }
+
      private val gattCallback = object : BluetoothGattCallback() {
          override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
              when (newState) {
@@ -156,6 +141,20 @@ override fun onCleared() {
                      addLog("Device connected")
                      isConnected.postValue(true)
                      previousConnectionState = isConnected.value
+                     if (ActivityCompat.checkSelfPermission(
+                             context,
+                             Manifest.permission.BLUETOOTH_CONNECT
+                         ) != PackageManager.PERMISSION_GRANTED
+                     ) {
+                         // TODO: Consider calling
+                         //    ActivityCompat#requestPermissions
+                         // here to request the missing permissions, and then overriding
+                         //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                         //                                          int[] grantResults)
+                         // to handle the case where the user grants the permission. See the documentation
+                         // for ActivityCompat#requestPermissions for more details.
+                         return
+                     }
                      gatt.discoverServices()
                  }
                  BluetoothProfile.STATE_CONNECTING -> {
@@ -223,6 +222,20 @@ override fun onCleared() {
                          DEVICE_LOGS_CHARACTERISTIC_ID_DP
                      }
                      val characteristic = service.getCharacteristic(UUID.fromString(characteristicId))
+                     if (ActivityCompat.checkSelfPermission(
+                             context,
+                             Manifest.permission.BLUETOOTH_CONNECT
+                         ) != PackageManager.PERMISSION_GRANTED
+                     ) {
+                         // TODO: Consider calling
+                         //    ActivityCompat#requestPermissions
+                         // here to request the missing permissions, and then overriding
+                         //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                         //                                          int[] grantResults)
+                         // to handle the case where the user grants the permission. See the documentation
+                         // for ActivityCompat#requestPermissions for more details.
+                         return
+                     }
                      if (characteristic != null && gatt.setCharacteristicNotification(characteristic, true)) {
                          addLog("Logs characteristic notification enabled for service $serviceId")
 
@@ -238,12 +251,7 @@ override fun onCleared() {
                      addLog("Service $serviceId not found")
                  }
              }
-
          }
-
-
-
-
      }
 
     fun addLog(message: String) {
@@ -253,6 +261,20 @@ override fun onCleared() {
 
 
     fun handleBondedDevice(bondedDevice: BluetoothDevice) {
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return
+        }
         if (bondedDevice.bondState != BluetoothDevice.BOND_BONDED) {
             bondedDevice.createBond()
             // Once the bond is created, the device's bond state will change.
@@ -278,7 +300,22 @@ override fun onCleared() {
         val service = bluetoothGatt?.getService(serviceUUID)
         val characteristic = service?.getCharacteristic(characteristicUUID)
 
+
         if (characteristic != null) {
+            if (ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return
+            }
             bluetoothGatt?.readCharacteristic(characteristic)
         }
     }
@@ -288,6 +325,20 @@ override fun onCleared() {
     private fun connectGatt(device: BluetoothDevice) {
         // If we're already connected or attempting a connection, disconnect first
         if (isConnected.value == true || bluetoothGatt != null) {
+            if (ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return
+            }
             bluetoothGatt?.disconnect()
         }
         // save logs to file and Clear the logs list
@@ -307,6 +358,20 @@ override fun onCleared() {
 
     fun disconnectGatt() {
         reconnectJob?.cancel()
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return
+        }
 
         bluetoothGatt?.disconnect()
     }
@@ -355,6 +420,8 @@ override fun onCleared() {
             }
         }
     }
+
+
 
     val bondStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {

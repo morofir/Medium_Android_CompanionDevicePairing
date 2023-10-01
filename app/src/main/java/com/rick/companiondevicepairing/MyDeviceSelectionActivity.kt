@@ -1,10 +1,10 @@
 package com.rick.companiondevicepairing
-
 import MyLogAdapter
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
 import android.companion.AssociationRequest
 import android.companion.BluetoothLeDeviceFilter
 import android.companion.CompanionDeviceManager
@@ -26,10 +26,11 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import android.view.View
-import androidx.core.view.size
+import androidx.annotation.RequiresApi
 
 
 private const val SELECT_DEVICE_REQUEST_CODE = 0
+private const val REQUEST_CODE = 1
 private const val REQUEST_CODE_BT_PERMISSIONS = 1001
 const val  Relivion_CUSTOM_SERVICE_ID_MG = "2a38f000-59c8-492b-9358-0e4e38fb0056"
 const val  DEVICE_LOGS_CHARACTERISTIC_ID_MG = "2a38f002-59c8-492b-9358-0e4e38fb0056"
@@ -37,27 +38,65 @@ const val RELIVION_CUSTOM_SERVICE_ID_DP = "2a38f000-59c8-492b-9358-0e4e38fb0058"
 const val DEVICE_LOGS_CHARACTERISTIC_ID_DP = "2a38f002-59c8-492b-9358-0e4e38fb0058"
 
 
-
-
 class MyDeviceSelectionActivity : AppCompatActivity() {
 
-    private lateinit var viewModel: DeviceLogViewModel
+    lateinit var viewModel: DeviceLogViewModel
     lateinit var txtDeviceStatus: TextView
     lateinit var scanButton: Button
     lateinit var shareButton: Button
 
-    val logAdapter = MyLogAdapter()
+    private val logAdapter = MyLogAdapter()
+    lateinit var deviceManager: CompanionDeviceManager
+    private var myCompanionDeviceService: MyCompanionDeviceService? = null
 
 
-
-    private val deviceManager: CompanionDeviceManager by lazy(LazyThreadSafetyMode.NONE) {
-        getSystemService(CompanionDeviceManager::class.java)
+    override fun onStop() {
+        super.onStop()
+//        viewModel.stopService(this)
     }
 
+
+    @RequiresApi(Build.VERSION_CODES.S)
     @SuppressLint("NotifyDataSetChanged")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_selection_device_my)
+
+
+        // Access the globally shared ViewModel
+        viewModel = (application as MyApplication).deviceLogViewModel
+        deviceManager = getSystemService(Context.COMPANION_DEVICE_SERVICE) as CompanionDeviceManager
+
+        // Check and request permissions
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND
+            ) != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // Permission is not granted, request for permission
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND,
+                    Manifest.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE
+                ),
+                REQUEST_CODE
+            )
+        } else {
+            // Permissions are already granted, proceed with your logic
+            startMyCompanionService()
+            // Initialize MyCompanionDeviceService
+            myCompanionDeviceService = MyCompanionDeviceService().apply {
+                // You can pass shared ViewModel or other dependencies here
+                this.setVMFromCompanionService(viewModel)
+            }
+
+        }
+
+
 
         viewModel = ViewModelProvider(this).get(DeviceLogViewModel::class.java)
         lifecycle.addObserver(viewModel)
@@ -81,7 +120,6 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
         bondedDevices.forEach { device ->
             Log.d("BondedDevice", "Device name: ${device.name}, Address: ${device.address}")
         }
-
 
 
         // Automatically start device scan when app is created.
@@ -111,15 +149,20 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             logAdapter.notifyDataSetChanged()
         }
 
+
         shareButton.setOnClickListener {
             viewModel.shareLogFile(this)
         }
 
         viewModel.isConnected.observe(this) { connected ->
-            // Check if the connection state is changed
-            if(viewModel.previousConnectionState != connected) {
+            if (viewModel.previousConnectionState != connected) {
                 viewModel.previousConnectionState = connected
-                viewModel.saveLogsToFile(viewModel.logs.value ?: listOf())
+                if (connected) {
+                    viewModel.startService(this)  // Start the service when connected
+                    viewModel.saveLogsToFile(viewModel.logs.value ?: listOf())
+                } else {
+                    viewModel.stopService(this)  // Stop the service when disconnected
+                }
             }
 
             txtDeviceStatus.text =
@@ -129,11 +172,11 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
 
         viewModel.lastLogTimes.observe(this) { times ->
             val timesString = times.joinToString(", ")
-            findViewById<TextView>(R.id.txtLastLogTime).text = "Last connection Times:\n$timesString"
+            findViewById<TextView>(R.id.txtLastLogTime).text =
+                "Last connection Times:\n$timesString"
         }
 
     }
-
 
 
     private fun gattService() {
@@ -189,7 +232,6 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
     }
 
 
-
     // Permission during runtime
     private fun checkAndRequestPermissions() {
         val permissionsNeeded = mutableListOf<String>()
@@ -242,6 +284,15 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun startMyCompanionService() {
+        val intent = Intent(this, MyCompanionDeviceService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            startService(intent)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -255,13 +306,24 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
                     // Show rationale and request permissions again or close the app
                 }
             }
+            REQUEST_CODE -> {  // The request code for companion permissions
+                if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                    // All companion permissions are granted, proceed with your functionality
+                    startMyCompanionService()
+                } else {
+                    // Show rationale and request permissions again or close the app
+                }
+            }
         }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
+// The rest of your code remains the same.
+
+
     private fun initiateDeviceScan() {
 
-         val bondedDevices = BluetoothAdapter.getDefaultAdapter().bondedDevices
+        val bondedDevices = BluetoothAdapter.getDefaultAdapter().bondedDevices
 
         val bondedDeviceMg = bondedDevices.find { device ->
             device.uuids?.any { it.uuid.toString() == Relivion_CUSTOM_SERVICE_ID_MG } ?: false
@@ -276,60 +338,78 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
         } else if (bondedDeviceDp != null) {
             viewModel.handleBondedDevice(bondedDeviceDp)
         } else {
-        // For MG service
-        val scanFilterMg = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid.fromString(Relivion_CUSTOM_SERVICE_ID_MG))
-            .build()
+            // For MG service
+            val scanFilterMg = ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid.fromString(Relivion_CUSTOM_SERVICE_ID_MG))
+                .build()
 
-        val deviceFilterMg: BluetoothLeDeviceFilter = BluetoothLeDeviceFilter.Builder()
-            .setScanFilter(scanFilterMg)
-            .build()
+            val deviceFilterMg: BluetoothLeDeviceFilter = BluetoothLeDeviceFilter.Builder()
+                .setScanFilter(scanFilterMg)
+                .build()
 
-        // For DP service
-        val scanFilterDp = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid.fromString(RELIVION_CUSTOM_SERVICE_ID_DP))
-            .build()
+            // For DP service
+            val scanFilterDp = ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid.fromString(RELIVION_CUSTOM_SERVICE_ID_DP))
+                .build()
 
-        val deviceFilterDp: BluetoothLeDeviceFilter = BluetoothLeDeviceFilter.Builder()
-            .setScanFilter(scanFilterDp)  // Use the correct scan filter
-            .build()
+            val deviceFilterDp: BluetoothLeDeviceFilter = BluetoothLeDeviceFilter.Builder()
+                .setScanFilter(scanFilterDp)  // Use the correct scan filter
+                .build()
 
-        val pairingRequest: AssociationRequest = AssociationRequest.Builder()
-            .addDeviceFilter(deviceFilterMg)
-            .addDeviceFilter(deviceFilterDp)
-            .setSingleDevice(false)
-            .build()
+            val pairingRequest: AssociationRequest = AssociationRequest.Builder()
+                .addDeviceFilter(deviceFilterMg)
+                .addDeviceFilter(deviceFilterDp)
+                .setSingleDevice(false)
+                .build()
 
-        deviceManager.associate(
-            pairingRequest,
-            object : CompanionDeviceManager.Callback() {
-                override fun onDeviceFound(chooserLauncher: IntentSender) {
-                    startIntentSenderForResult(
-                        chooserLauncher,
-                        SELECT_DEVICE_REQUEST_CODE, null, 0, 0, 0
-                    )
-                }
+            deviceManager.associate(
+                pairingRequest,
+                object : CompanionDeviceManager.Callback() {
+                    override fun onDeviceFound(chooserLauncher: IntentSender) {
+                        startIntentSenderForResult(
+                            chooserLauncher,
+                            SELECT_DEVICE_REQUEST_CODE, null, 0, 0, 0
+                        )
+                    }
 
-                override fun onFailure(error: CharSequence?) {
-                }
-            }, null
-        )
-            }
+                    override fun onFailure(error: CharSequence?) {
+                        Log.e("OnFailure", error.toString())
+                    }
+                }, null
+            )
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == SELECT_DEVICE_REQUEST_CODE && resultCode == RESULT_OK) {
-            val deviceObject =
-                data?.getParcelableExtra<Parcelable>(CompanionDeviceManager.EXTRA_DEVICE)
-            deviceObject?.let { viewModel.handleActivityResult(it) }
+            val deviceObject = data?.getParcelableExtra<Parcelable>(CompanionDeviceManager.EXTRA_DEVICE)
+
+            deviceObject?.let {
+                    viewModel.handleActivityResult(it)
+                }
+
+            deviceObject?.let {
+                if (it is BluetoothDevice && ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    it.createBond()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        deviceManager.startObservingDevicePresence(it.address)
+                    }
+                }
+            }
         }
     }
 
 
-    override fun onDestroy() {
-        super.onDestroy()
-        unregisterReceiver(viewModel.bondStateReceiver)
+        override fun onDestroy() {
+            super.onDestroy()
+            unregisterReceiver(viewModel.bondStateReceiver)
+        }
+
     }
 
-}
+

@@ -21,6 +21,7 @@
   <androidx.baselineprofile.producer/>
   <androidx.benchmark/>
   <androidx.biometric/>
+  <androidx.bluetooth/>
   <androidx.browser/>
   <androidx.camera/>
   <androidx.car/>

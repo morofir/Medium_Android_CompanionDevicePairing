@@ -23,7 +23,7 @@
         // DiffUtil for efficient list updates
         class LogDiffCallback : DiffUtil.ItemCallback<String>() {
             override fun areItemsTheSame(oldItem: String, newItem: String): Boolean {
-                return oldItem == newItem // Replace with your unique ID comparison logic
+                return oldItem == newItem
             }
 
             override fun areContentsTheSame(oldItem: String, newItem: String): Boolean {
