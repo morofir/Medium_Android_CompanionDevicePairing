@@ -47,7 +47,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
 
     private val logAdapter = MyLogAdapter()
     lateinit var deviceManager: CompanionDeviceManager
-    private var myCompanionDeviceService: MyCompanionDeviceService? = null
+//    private var myCompanionDeviceService: MyCompanionDeviceService? = null
 
 
     override fun onStop() {
@@ -86,17 +86,15 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
                 REQUEST_CODE
             )
         } else {
-            // Permissions are already granted, proceed with your logic
-            startMyCompanionService()
-            // Initialize MyCompanionDeviceService
-            myCompanionDeviceService = MyCompanionDeviceService().apply {
-                // You can pass shared ViewModel or other dependencies here
-                this.setVMFromCompanionService(viewModel)
-            }
+//            // Permissions are already granted, proceed with your logic
+//            startMyCompanionService()
+//            // Initialize MyCompanionDeviceService
+//            myCompanionDeviceService = MyCompanionDeviceService().apply {
+//                // You can pass shared ViewModel or other dependencies here
+//                this.setVMFromCompanionService(viewModel)
+//            }
 
         }
-
-
 
         viewModel = ViewModelProvider(this).get(DeviceLogViewModel::class.java)
         lifecycle.addObserver(viewModel)
@@ -138,6 +136,8 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
 
         viewModel.logs.observe(this) { logList ->
             logAdapter.submitListItem(logList)
+            viewModel.counter.value = logList.size
+
             findViewById<TextView>(R.id.counter).text = "count: ${logList.size}"
 
             if (logList.isNotEmpty()) {
@@ -158,10 +158,10 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             if (viewModel.previousConnectionState != connected) {
                 viewModel.previousConnectionState = connected
                 if (connected) {
-                    viewModel.startService(this)  // Start the service when connected
+                    viewModel.startService(this)  // Start the foreground service when connected
                     viewModel.saveLogsToFile(viewModel.logs.value ?: listOf())
                 } else {
-                    viewModel.stopService(this)  // Stop the service when disconnected
+                    viewModel.stopService(this)  // Stop the foreground service when disconnected
                 }
             }
 
@@ -284,13 +284,13 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.S)
-    private fun startMyCompanionService() {
-        val intent = Intent(this, MyCompanionDeviceService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            startService(intent)
-        }
-    }
+//    @RequiresApi(Build.VERSION_CODES.S)
+//    private fun startMyCompanionService() {
+//        val intent = Intent(this, MyCompanionDeviceService::class.java)
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//            startService(intent)
+//        }
+//    }
 
     @RequiresApi(Build.VERSION_CODES.S)
     override fun onRequestPermissionsResult(
@@ -309,7 +309,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
             REQUEST_CODE -> {  // The request code for companion permissions
                 if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
                     // All companion permissions are granted, proceed with your functionality
-                    startMyCompanionService()
+//                    startMyCompanionService()
                 } else {
                     // Show rationale and request permissions again or close the app
                 }
@@ -384,6 +384,7 @@ class MyDeviceSelectionActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == SELECT_DEVICE_REQUEST_CODE && resultCode == RESULT_OK) {
             val deviceObject = data?.getParcelableExtra<Parcelable>(CompanionDeviceManager.EXTRA_DEVICE)
+
 
             deviceObject?.let {
                     viewModel.handleActivityResult(it)

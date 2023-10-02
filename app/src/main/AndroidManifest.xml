@@ -35,14 +35,14 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".MyCompanionDeviceService"
-            android:exported="true"
-            android:foregroundServiceType="connectedDevice">
-            <intent-filter>
-                <action android:name="android.companion.CompanionDeviceService" />
-            </intent-filter>
-        </service>
+<!--        <service-->
+<!--            android:name=".MyCompanionDeviceService"-->
+<!--            android:exported="true"-->
+<!--            android:foregroundServiceType="connectedDevice">-->
+<!--            <intent-filter>-->
+<!--                <action android:name="android.companion.CompanionDeviceService" />-->
+<!--            </intent-filter>-->
+<!--        </service>-->
 
         <service
             android:name=".ForegroundService"

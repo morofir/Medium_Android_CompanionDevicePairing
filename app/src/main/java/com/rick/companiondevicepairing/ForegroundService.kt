@@ -1,29 +1,39 @@
 package com.rick.companiondevicepairing
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.Observer
+import java.util.*
 
 
 class ForegroundService : LifecycleService() {
 
     private lateinit var deviceLogViewModel: DeviceLogViewModel
+    private var currentProgress = 0
+
 
     @RequiresApi(Build.VERSION_CODES.S)
     override fun onCreate() {
         super<LifecycleService>.onCreate()
         deviceLogViewModel = (applicationContext as MyApplication).deviceLogViewModel
 
-        // Observe ViewModel LiveData
-        deviceLogViewModel.isConnected.observe(this, Observer { isConnected ->
-            updateNotification(isConnected)
-        })
+        // Start observing logs
+        deviceLogViewModel.logs.observe(this) { logs ->
+            updateNotification(logs.isNotEmpty(), logs.size, currentProgress) // Here, progress is set to 0 initially
+        }
+
+        // Start posting progress updates
+        progressHandler.post(progressRunnable)
     }
 
     override fun onBind(intent: Intent): IBinder? {
@@ -33,7 +43,9 @@ class ForegroundService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super<LifecycleService>.onStartCommand(intent, flags, startId)
+
         createNotificationChannel()
+
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Relivion POC application")
             .setContentText("Relivion Connected!")
@@ -56,18 +68,45 @@ class ForegroundService : LifecycleService() {
         }
     }
 
-    private fun updateNotification(isConnected: Boolean) {
+    private var progressHandler: Handler = Handler(Looper.getMainLooper())
+    private val progressRunnable: Runnable = object : Runnable {
+        override fun run() {
+            currentProgress += 1
+            if (currentProgress > 100) {
+                currentProgress = 0  // Reset to 0 if it crosses 100
+            }
+            updateNotification(
+                deviceLogViewModel.isConnected.value ?: false,
+                deviceLogViewModel.logs.value?.size ?: 0,
+                currentProgress
+            )
+            progressHandler.postDelayed(this, 1000)  // Update every second
+        }
+    }
+
+
+    private fun updateNotification(isConnected: Boolean, logSize: Int, progress: Int) {
         val text = if (isConnected) "Relivion Connected!" else "Relivion Disconnected"
 
-        val notification = NotificationCompat.Builder(this, channelId)
+        val builder = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Relivion POC application")
-            .setContentText(text)
+            .setContentText("$text ($progress)")
             .setSmallIcon(R.drawable.ic_baseline_bluetooth_searching_24)
-            .build()
+            .setProgress(100, progress, false) 
+            .setOnlyAlertOnce(true)
 
-        val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, builder.build())  // This line updates the existing notification
     }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        progressHandler.removeCallbacks(progressRunnable)  // Stop when the service is destroyed
+    }
+
+
+
     companion object {
         private val presentDevices = mutableSetOf<String>()
 

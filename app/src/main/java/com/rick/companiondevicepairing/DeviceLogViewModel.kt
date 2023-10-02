@@ -41,6 +41,8 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
     private var lastConnectedDevice: BluetoothDevice? = null
     val lastLogTimes: MutableLiveData<List<String>> = MutableLiveData(emptyList())
     private var reconnectJob: Job? = null
+    val counter = MutableLiveData<Int>(0)  // TODO
+
 
 
     init {
@@ -91,6 +93,11 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private fun incrementCounter() {
+        val currentCount = counter.value ?: 0
+        counter.postValue(currentCount + 1)
+    }
+
 
     private fun startPeriodicLogging() {
         if (isLoggingActive) return
@@ -99,6 +106,7 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
         CoroutineScope(Dispatchers.IO).launch {
             while (isLoggingActive) {
                 delay(1000) // Wait for 1 second
+                incrementCounter()
 
                 val deviceState = if (isConnected.value == true) "Connected" else "Disconnected"
 
@@ -131,6 +139,8 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun stopService(context: Context) {
         val serviceIntent = Intent(context, ForegroundService::class.java)
+        counter.value = 0
+
         context.stopService(serviceIntent)
     }
 
@@ -162,6 +172,7 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
                  }
                  BluetoothProfile.STATE_DISCONNECTING -> {
                      addLog("Device disconnecting ...")
+                     isConnected.postValue(false)
                  }
                  BluetoothProfile.STATE_DISCONNECTED -> {
                      addLog("Device Disconnected")
@@ -495,8 +506,8 @@ class DeviceLogViewModel(application: Application) : AndroidViewModel(applicatio
 
     companion object {
         const val PERMISSION_REQUEST_CODE = 101
-        const val MAX_RECONNECT_ATTEMPTS = 5 // you can adjust this
-        const val RECONNECT_INTERVAL_MS = 5000L // 5 seconds, you can adjust this as needed
+        const val MAX_RECONNECT_ATTEMPTS = 5
+        const val RECONNECT_INTERVAL_MS = 5000L // 5 seconds
     }
 
 }
